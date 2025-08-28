@@ -1,4 +1,4 @@
-# EuroCALL Attendee Q&A (v3.2)
+# EuroCALL Attendee Q&A (v3.4)
 
 This repo is ready for GitHub Pages.
 
