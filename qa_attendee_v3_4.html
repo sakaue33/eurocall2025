@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EuroCALL Q&A — Attendee View (v3.4)</title>
+<style>
+  :root{ --bg:#0e0f12; --fg:#f4f6fb; --sub:#aab4c3; --card:#17181c; --line:#252833; --accent:#4da3ff; --chip:#111420; }
+  :root[data-theme="light"]{ --bg:#ffffff; --fg:#0e0f12; --sub:#465062; --card:#f6f8fb; --line:#dfe3eb; --accent:#2a66cc; --chip:#eef2f9; }
+  html{ font-size:16px; }
+  body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif}
+  header{position:sticky;top:0;background:color-mix(in srgb, var(--bg) 82%, black 18%);
+    border-bottom:1px solid var(--line);backdrop-filter:saturate(120%) blur(6px);
+    padding:.8rem .9rem;z-index:10}
+  h1{font-size:1.1rem;margin:0 0 .3rem}
+  .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+  .chip{font-size:.9rem;padding:.3rem .55rem;border-radius:.6rem;border:1px solid var(--line);background:var(--chip)}
+  button,select,input[type=text]{font-size:1rem;border:1px solid var(--line);border-radius:.6rem;background:var(--card);color:var(--fg);padding:.45rem .6rem;cursor:pointer}
+  input[type=text]{flex:1;min-width:16ch}
+  main{padding:1rem .9rem 2rem}
+  details{background:var(--card);border:1px solid var(--line);border-radius:.7rem;padding:.7rem;margin:.6rem 0}
+  summary{cursor:pointer;font-weight:700}
+  .muted{color:var(--sub);font-size:.9rem}
+  .tag{font-size:.8rem;margin-left:.5rem;padding:.05rem .4rem;border:1px solid var(--line);border-radius:.45rem;background:var(--chip);opacity:.9}
+  .controls{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.35rem}
+  .note{font-size:.9rem;color:var(--sub)}
+  .en{margin:.5rem 0 .15rem;font-weight:700}
+  .jp{margin:.15rem 0 0;color:var(--sub)}
+  .sep{height:1px;background:var(--line);margin:.5rem 0 .4rem}
+  .fswrap{display:flex;align-items:center;gap:.4rem}
+  .fsval{min-width:3ch;text-align:right}
+  @media print{ header,.controls{display:none} details{break-inside:avoid} }
+</style>
+</head>
+<body>
+<header>
+  <h1>EuroCALL Q&A — Attendee View <span class="muted">v3.4</span></h1>
+  <div class="row controls">
+    <div class="lang">
+      <span class="muted">Language</span>
+      <button class="pill" id="langEN">EN</button>
+      <button class="pill" id="langJP">JP</button>
+    </div>
+    <div class="lang">
+      <span class="muted">Theme</span>
+      <button class="pill" id="dark">Dark</button>
+      <button class="pill" id="light">Light</button>
+    </div>
+    <input id="search" type="text" placeholder="Search (heatmap, mirrored, reminder) / 検索" />
+    <select id="cat">
+      <option value="">All categories</option>
+    </select>
+    <div class="fswrap">
+      <span class="muted">Text size</span>
+      <input id="fs" type="range" min="14" max="22" step="1" value="16">
+      <span id="fsv" class="muted fsval">16</span><span class="muted">px</span>
+    </div>
+    <button id="openAll">Open all</button>
+    <button id="closeAll">Close all</button>
+  </div>
+</header>
+
+<main id="list"></main>
+
+<script>
+(function(){
+  function getLS(k,d){ try{ return localStorage.getItem(k) ?? d; }catch(_){ return d; } }
+  function setLS(k,v){ try{ localStorage.setItem(k,v); }catch(_){ } }
+
+  const theme = getLS('tema','dark');
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('dark').addEventListener('click',()=>{document.documentElement.setAttribute('data-theme','dark'); setLS('tema','dark');});
+  document.getElementById('light').addEventListener('click',()=>{document.documentElement.setAttribute('data-theme','light'); setLS('tema','light');});
+
+  let LANG = getLS('qa_lang','EN');
+  document.getElementById('langEN').addEventListener('click',()=>{ LANG='EN'; setLS('qa_lang','EN'); render(); });
+  document.getElementById('langJP').addEventListener('click',()=>{ LANG='JP'; setLS('qa_lang','JP'); render(); });
+
+  const fs = document.getElementById('fs');
+  const fsv = document.getElementById('fsv');
+  const savedFS = Number(getLS('qa_fs', '16'));
+  function applyFS(px){ document.documentElement.style.fontSize = px + 'px'; fsv.textContent = String(px); }
+  applyFS(savedFS); fs.value = String(savedFS);
+  fs.addEventListener('input', ()=>{ const v = Number(fs.value); applyFS(v); setLS('qa_fs', String(v)); });
+
+  const QA = [
+    {cat:"visualization",
+     t_en:"Heatmap axes — what am I seeing? [visualization]",
+     t_jp:"ヒートマップの軸は何？ [visualization]",
+     en:"X shows the weeks in the semester (W2–W14). Y lists students, grouped by final score into Top 25% and Bottom 25%. Each square says if the student finished the weekly practice before the quiz that week. Reading left to right, you can see habit: straight dark lines mean steady practice; scattered dark squares mean irregular practice. This makes group differences visible at a glance.",
+     jp:"横軸は学期内の週（W2–W14）、縦軸は受講者（最終得点の上位25%・下位25%）。各マスはその週のクイズ前に練習を完了したかどうかを示します。左から右へ読むと習慣性が見えます。濃いマスが一直線なら規則的、点在なら不規則です。成績層の違いを直感的に把握できます。"},
+    {cat:"visualization",
+     t_en:"Heatmap colors and legend [visualization]",
+     t_jp:"色と凡例 [visualization]",
+     en:"We use a simple two‑color scheme. Dark means the practice was completed; light or blank means it was not. The palette never changes across weeks, so patterns stay easy to compare. A small legend on the poster reminds viewers what each shade means.",
+     jp:"配色は二値です。濃い色＝完了、薄い/空白＝未完了。週が変わってもパレットは固定なので、パターン比較が容易です。ポスター上の凡例で色の意味をすぐ確認できます。"},
+    {cat:"visualization",
+     t_en:"Why Top/Bottom 25% only? [visualization]",
+     t_jp:"なぜ上位/下位25%だけ？ [visualization]",
+     en:"Quartiles increase contrast. The middle 50% mixes many patterns and makes the heatmap busy. We still include the middle group in our statistics, but we hide it in the figure to keep the visual story clear for quick poster discussions.",
+     jp:"四分位にするとコントラストが強まり、短時間のポスター説明で要点が伝わります。中位50%はパターンが混在して視認性を下げます。統計には含めますが、図では省略してメッセージを明確にしています。"},
+    {cat:"method",
+     t_en:"How is “before the quiz” defined? [method]",
+     t_jp:"「クイズ前」の定義は？ [method]",
+     en:"We use the server time when the quiz starts as the cutoff. Only practice finished before that timestamp counts. As future work, we plan to test a simple ‘24‑hour window’ rule as a robustness check.",
+     jp:"締切はサーバー上のクイズ開始時刻です。その時刻より前の練習だけをカウントします。今後の課題として、頑健性確認のために「開始24時間前までをカウントする」方法も検討します。"},
+    {cat:"method",
+     t_en:"Multiple attempts — which one is used? [method]",
+     t_jp:"複数試行はどれを採用？ [method]",
+     en:"If a student practices several times in a week, we use the last attempt that finished before the quiz. This best reflects preparation just before the quiz.",
+     jp:"同一週に複数回の練習がある場合は、クイズ前に完了した最終試行を用います。本番直前の準備状況を最もよく表すと考えるためです。"},
+    {cat:"data",
+     t_en:"Missing data, absences, withdrawals [data]",
+     t_jp:"欠測・欠席・履修中止 [data]",
+     en:"Weeks with no activity are left blank. For now, our figures focus on observed weeks. As future work, we will report a missingness rate and re‑check results after excluding those rows.",
+     jp:"活動のない週は空白として扱います。現段階の図は観測された週を中心に示しています。今後の課題として、欠測率の提示や除外時の再確認を行います。"},
+    {cat:"visualization",
+     t_en:"Mirrored plot — how to read it? [visualization]",
+     t_jp:"ミラープロットの読み方 [visualization]",
+     en:"The plot shows two score distributions back‑to‑back. The top half shows scores when practice was done; the bottom half shows scores when practice was not done. Look at three things: center (the median line sits higher on top), spread (fewer very low scores on top), and shape (a bulge in the mid‑to‑high range). Together these suggest scores tend to be higher when practice is completed.",
+     jp:"二つの得点分布を背中合わせに配置します。上半分＝練習あり、下半分＝なし。注目点は、中心（上の中央値が高い）、広がり（上では極端な低得点が少ない）、形（中〜高得点帯がふくらむ）です。総合すると、練習ありの方が高得点に寄る傾向が見て取れます。"},
+    {cat:"interpretation",
+     t_en:"Week difficulty and “rush” weeks [interpretation]",
+     t_jp:"週の難易度・駆け込み週 [interpretation]",
+     en:"We have not yet coded ‘week difficulty’ or ‘rush’ weeks. Future work: tag harder weeks and test whether last‑minute practice shrinks the gap on the mirrored plot.",
+     jp:"「週の難易度」や「駆け込み週」はまだ分析していません。今後の課題として、難しい週のタグ付けや、締切直前の駆け込みで差が縮むかの検証を行います。"},
+    {cat:"statistics-lite",
+      t_en:"Is this causal? [statistics‑lite]",
+      t_jp:"因果関係ですか？ [statistics‑lite]",
+      en:"This shows an association, not proof of cause and effect. To help readers in the future, we plan simple checks—compare students with similar starting levels and attendance, and try two reminder times. (Planned; not done yet.)",
+      jp:"ここで示すのは関連であって因果の証明ではありません。今後の理解を助けるため、やさしい確認を予定しています（出発点や出席が似た学生同士の比較、前日と当日リマインドの試行など）。※まだ実施していません。"},
+    {cat:"method",
+     t_en:"Light controls for confounders [method]",
+     t_jp:"交絡への簡易統制 [method]",
+     en:"Planned: add two easy controls—baseline score and attendance—and show results with and without them side by side so the effect is easy to judge.",
+     jp:"予定：事前スコアと出席を簡単な統制として加え、統制あり/なしの結果を並べて示し、効果を判断しやすくします。"},
+    {cat:"measurement",
+     t_en:"Reliability and fairness of quizzes [measurement]",
+     t_jp:"小テストの信頼性・公平性 [measurement]",
+     en:"Planned: compute Cronbach’s alpha and flag unusual weeks. If those weeks change the picture, we will say so.",
+     jp:"予定：Cronbachのαを算出し、特異な週を注記します。除外で図が変わる場合はその旨を明記します。"},
+    {cat:"statistics-lite",
+     t_en:"Is N=84 enough? [statistics‑lite]",
+     t_jp:"N=84で足りますか？ [statistics‑lite]",
+     en:"For mean differences and within‑student comparisons, N=84 is adequate. The reminder timing comparison is planned as a pilot; we will show effect sizes with simple confidence bands instead of complex tests.",
+     jp:"平均差や個人内比較を見るにはN=84で十分です。リマインド時刻の比較は予備的な計画で、複雑な検定ではなく、効果量と分かりやすい信頼区間で示す予定です。"},
+    {cat:"future-work",
+     t_en:"Two reminder times — simple plan [future‑work]",
+     t_jp:"前日/当日リマインド計画 [future‑work]",
+     en:"We have not sent reminders yet. As a next step, we could send the same short message either the day before or the same day, then compare two outcomes: earlier starts and mean scores, with fair assignment by simple rotation or a random split.",
+     jp:"リマインドはまだ送っていません。次の段階として、同じ短いメッセージを前日または当日に送り、（1）早めの着手、（2）平均点を比較します。割当はローテーションや無作為分けで公平に行います。"},
+    {cat:"data",
+     t_en:"Practice quality beyond completion [data]",
+     t_jp:"完了以外の「質」 [data]",
+     en:"Planned: go beyond completion by tracking time‑on‑task, number of items, and whether completion was early or last‑minute. These simple counts can help explain score changes.",
+     jp:"予定：完了の有無に加え、作業時間、項目数、早期/直前の完了も記録します。これらの簡単なカウント指標は得点変化の説明に役立ちます。"},
+    {cat:"replicability",
+     t_en:"Sharing code and data availability [replicability]",
+     t_jp:"コード公開とデータの公開時期 [replicability]",
+     en:"We will share clean R scripts and a short how‑to guide so you can recreate the figures. The original course dataset cannot be shared publicly until our journal article is accepted—thanks for your understanding. For transparency, we provide small synthetic examples and the exact figure settings, so you can run the workflow on your own data.",
+     jp:"整理済みのRスクリプトと短い手順書は公開します。一方、元のコースデータは論文採択まで一般公開できません（ご理解ください）。透明性のため、疑似例と図の設定を併記し、各自のデータで同じ手順を実行できるようにします。"},
+    {cat:"pedagogy",
+     t_en:"What can I try next week? [pedagogy]",
+     t_jp:"来週すぐにできること [pedagogy]",
+     en:"Keep one small weekly task. After class, show a simple heatmap view and invite each student to set a personal goal for the next week. If reminders are later introduced, keep them short and friendly.",
+     jp:"小さな週次課題を一つ維持します。授業後に簡単なヒートマップを見せ、翌週の個人目標を各自で設定させます。リマインドを導入する場合は、短く親しみやすい文面にします。"},
+    {cat:"ethics",
+     t_en:"Privacy and consent with log data [ethics]",
+     t_jp:"ログデータのプライバシーと同意 [ethics]",
+     en:"Access is based on consent within this course. We analyze de‑identified logs for teaching improvement. Any public sharing uses aggregated, anonymized results; no individual student can be identified.",
+     jp:"アクセスはこの科目内での同意に基づきます。分析は匿名化ログを教育改善の目的で行います。公開時は集計・匿名の結果のみを用い、個人が特定されることはありません。"},
+    {cat:"interpretation",
+     t_en:"How big is the score gap in plain words? [interpretation]",
+     t_jp:"点差の大きさを平易に言うと？ [interpretation]",
+     en:"On average, students who did the weekly practice scored about 9–10 points higher on a 50‑point quiz. That is roughly one grade step in many classes. The mirrored plot shows this as a higher center and fewer very low scores.",
+     jp:"平均すると、週次練習を行った学生は50点満点のクイズで約9～10点高い傾向です。多くの授業で言えば評定が一段階上がる程度の差です。ミラープロットでは中央値が高く、極端な低得点が少ない形として現れます。"},
+    {cat:"summary",
+     t_en:"One‑sentence takeaway [summary]",
+     t_jp:"要点ひとことで [summary]",
+     en:"Regular weekly practice goes with higher vocabulary scores. Our simple, reproducible workflow lets teachers update the visuals quickly and discuss progress with students in plain language.",
+     jp:"規則的な週次練習は語彙得点の上昇と結びつきます。再現可能で簡単なワークフローにより、図をすばやく更新し、平易な言葉で学習の進捗を話し合えます。"}
+  ];
+
+  const catSel = document.getElementById('cat');
+  const cats = Array.from(new Set(QA.map(q=>q.cat))).sort();
+  cats.forEach(c=>{ const opt=document.createElement('option'); opt.value=c; opt.textContent=c; catSel.appendChild(opt); });
+
+  const list = document.getElementById('list');
+  const search = document.getElementById('search');
+
+  function render(){
+    const q = (search.value || '').toLowerCase();
+    const c = catSel.value;
+    list.innerHTML = '';
+    QA.forEach((it, idx)=>{
+      if(c && it.cat !== c) return;
+      const hay = (it.t_en + ' ' + it.t_jp + ' ' + it.en + ' ' + it.jp + ' ' + it.cat).toLowerCase();
+      if(q && !hay.includes(q)) return;
+      const det = document.createElement('details');
+      if(idx < 3 && !q && !c) det.open = true;
+      const sum = document.createElement('summary');
+      sum.textContent = (LANG==='EN' ? it.t_en : it.t_jp);
+      const tag = document.createElement('span'); tag.className='tag'; tag.textContent = '['+it.cat+']'; sum.appendChild(tag);
+      const en = document.createElement('div'); en.className='en'; en.textContent = (LANG==='EN' ? 'Answer (EN)' : '英語の答え');
+      const p_en = document.createElement('p'); p_en.innerHTML = it.en;
+      const sep = document.createElement('div'); sep.className='sep';
+      const jp = document.createElement('div'); jp.className='jp'; jp.textContent = (LANG==='EN' ? '日本語の要約' : '要約（JP）');
+      const p_jp = document.createElement('p'); p_jp.innerHTML = it.jp;
+      det.appendChild(sum); det.appendChild(en); det.appendChild(p_en); det.appendChild(sep); det.appendChild(jp); det.appendChild(p_jp);
+      list.appendChild(det);
+    });
+  }
+
+  document.getElementById('openAll').addEventListener('click', ()=>{
+    document.querySelectorAll('details').forEach(d=> d.open = true);
+  });
+  document.getElementById('closeAll').addEventListener('click', ()=>{
+    document.querySelectorAll('details').forEach(d=> d.open = false);
+  });
+
+  search.addEventListener('input', render);
+  catSel.addEventListener('change', render);
+  render();
+})();
+</script>
+</body>
+</html>
